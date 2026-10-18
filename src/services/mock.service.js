@@ -1,0 +1,135 @@
+import { generateMockUsers } from "../mocks/user.mocks.js";
+import { generateMockOrders } from "../mocks/order.mocks.js";
+import { generateMockDelivery } from "../mocks/delivery.mocks.js";
+import { MockRepository } from "../repositories/mock.repository.js";
+import { USER_ROLES, MOCKING_PARAMETERS, ORDER_STATUS, COLLECTIONS } from "../constants/index.js";
+import { hashPassword } from "../utils/password.util.js";
+import { InvalidQuantityError, InvalidStatusError, MockSeedError } from "../errors/domain.error.js";
+
+const parseQty = (qty) => {
+    if (qty === undefined) return MOCKING_PARAMETERS.DEFAULT_QTY;
+
+    const { MIN_QTY, MAX_QTY } = MOCKING_PARAMETERS;
+    const details = { received: qty, min: MIN_QTY, max: MAX_QTY };
+
+    if (typeof qty !== "string" || !/^-?\d+$/.test(qty.trim())) {
+        throw new InvalidQuantityError({ ...details, reason: "La cantidad debe ser un número entero" });
+    }
+
+    const parsed = Number(qty);
+    if (parsed < 0) {
+        throw new InvalidQuantityError({ ...details, reason: "La cantidad no puede ser negativa" });
+    }
+    if (parsed < MIN_QTY) {
+        throw new InvalidQuantityError({ ...details, reason: `La cantidad mínima es ${MIN_QTY}` });
+    }
+    if (parsed > MAX_QTY) {
+        throw new InvalidQuantityError({ ...details, reason: `La cantidad máxima es ${MAX_QTY}` });
+    }
+    return parsed;
+};
+
+const parseOrderStatus = (status) => {
+    if (status === undefined) return undefined;
+
+    const allowed = Object.values(ORDER_STATUS);
+    if (typeof status !== "string" || !allowed.includes(status)) {
+        throw new InvalidStatusError({ received: status, allowed });
+    }
+    return status;
+};
+
+const buildDataset = (qty, orderStatus) => {
+    const courierQty = Math.max(1, Math.ceil(qty / MOCKING_PARAMETERS.ORDERS_PER_COURIER));
+
+    const customers = generateMockUsers(qty, USER_ROLES.USER);
+    const couriers = generateMockUsers(courierQty, USER_ROLES.COURIER);
+    const orders = generateMockOrders(qty, customers.map((c) => c._id), orderStatus);
+
+    const courierIds = couriers.map((c) => c._id);
+    const deliveries = [];
+    for (const order of orders) {
+        const delivery = generateMockDelivery(order, courierIds);
+        if (!delivery) continue;
+        order.delivery = delivery._id;
+        deliveries.push(delivery);
+    }
+
+    return { customers, couriers, orders, deliveries };
+};
+
+const withHashedPassword = async (users) => {
+    const password = await hashPassword(MOCKING_PARAMETERS.DEFAULT_PASSWORD);
+    return users.map((user) => ({ ...user, password }));
+};
+
+const rollbackSteps = async (steps) => {
+    for (const step of [...steps].reverse()) {
+        try {
+            await step.remove(step.docs.map((doc) => doc._id));
+        } catch (error) {
+            console.error(`No se pudo revertir ${step.collection}:`, error.message);
+        }
+    }
+};
+
+export class MockService {
+    static getUsers(qty) {
+        return generateMockUsers(parseQty(qty));
+    }
+
+    static getCouriers(qty) {
+        return generateMockUsers(parseQty(qty), USER_ROLES.COURIER);
+    }
+
+    static getOrders(qty, status) {
+        return buildDataset(parseQty(qty), parseOrderStatus(status)).orders;
+    }
+
+    static getDeliveries(qty) {
+        return buildDataset(parseQty(qty)).deliveries;
+    }
+
+    static async seedUsers(qty) {
+        const users = await withHashedPassword(generateMockUsers(parseQty(qty)));
+        try {
+            const insertados = await MockRepository.insertUsers(users);
+            return { insertados, coleccion: COLLECTIONS.USERS };
+        } catch (error) {
+            throw new MockSeedError({ collection: COLLECTIONS.USERS }, error);
+        }
+    }
+
+    static async seed(qty) {
+        const { customers, couriers, orders, deliveries } = buildDataset(parseQty(qty));
+
+        const users = await withHashedPassword([...customers, ...couriers]);
+
+        const steps = [
+            { collection: COLLECTIONS.USERS, docs: users, insert: MockRepository.insertUsers, remove: MockRepository.deleteUsers },
+            { collection: COLLECTIONS.ORDERS, docs: orders, insert: MockRepository.insertOrders, remove: MockRepository.deleteOrders },
+            { collection: COLLECTIONS.DELIVERIES, docs: deliveries, insert: MockRepository.insertDeliveries, remove: MockRepository.deleteDeliveries }
+        ];
+
+        const completed = [];
+        const inserted = {};
+        for (const step of steps) {
+            try {
+                inserted[step.collection] = await step.insert(step.docs);
+                completed.push(step);
+            } catch (error) {
+                await rollbackSteps(completed);
+                throw new MockSeedError({ collection: step.collection }, error);
+            }
+        }
+
+        return {
+            insertados: {
+                usuarios: inserted[COLLECTIONS.USERS] - couriers.length,
+                repartidores: couriers.length,
+                pedidos: inserted[COLLECTIONS.ORDERS],
+                entregas: inserted[COLLECTIONS.DELIVERIES]
+            }
+        };
+    }
+}
