@@ -87,7 +87,7 @@ src/
 |---|---|---|
 | `USER_NOT_FOUND` | 404 | Usuario no encontrado |
 | `PRODUCT_NOT_FOUND` | 404 | Producto no encontrado |
-| `ORDER_NOT_FOUND` | 404 | Pedido no encontrado (reservado para futuros endpoints de pedidos) |
+| `ORDER_NOT_FOUND` | 404 | Pedido no encontrado |
 | `ROUTE_NOT_FOUND` | 404 | Ruta no encontrada |
 | `EMAIL_REQUIRED` | 400 | El email es obligatorio |
 | `EMAIL_ALREADY_EXISTS` | 409 | Ya existe un usuario con ese email |
@@ -99,6 +99,8 @@ src/
 | `INVALID_JSON` | 400 | El cuerpo de la petición no es un JSON válido |
 | `MOCK_SEED_FAILED` | 500 | No se pudieron guardar los datos de prueba |
 | `INTERNAL_ERROR` | 500 | Error interno del servidor |
+| `DELIVERY_ALREADY_EXISTS` | 409 | El pedido ya tiene una entrega asociada |
+| `NO_COURIERS_AVAILABLE` | 409 | No hay repartidores disponibles para asignar la entrega |
 
 El middleware también traduce errores de Mongoose (`CastError` → `INVALID_ID`,
 `ValidationError` → `VALIDATION_ERROR`, índice duplicado → `EMAIL_ALREADY_EXISTS`)
@@ -115,6 +117,11 @@ exponer detalles internos. Los 5xx se registran con su stack trace en consola; l
 | `qty` fuera de rango (`0`, `1000`) | 400 `INVALID_QUANTITY` (mínimo 1, máximo 100) |
 | `status` inexistente en `GET /api/mocks/orders?status=` | 400 `INVALID_STATUS` (`details.allowed` lista los válidos) |
 | Falla de MongoDB durante `seed` | 500 `MOCK_SEED_FAILED` |
+| `orderId` ausente o mal formado en `POST /api/mocks/seed/deliveries` | 400 `INVALID_ID` |
+| El pedido no existe | 404 `ORDER_NOT_FOUND` |
+| El pedido ya tiene entrega | 409 `DELIVERY_ALREADY_EXISTS` |
+| Pedido cancelado (no admite entrega) | 400 `INVALID_STATUS` |
+| No hay repartidores cargados | 409 `NO_COURIERS_AVAILABLE` (ejecutar antes `POST /api/mocks/seed`) |
 
 `GET /api/mocks/orders?qty=3&status=DELIVERED` genera pedidos con un estado concreto.
 
@@ -163,6 +170,7 @@ Si es inválido responde `400` con `INVALID_QUANTITY` (ver "Manejo de errores").
 |---|---|---|
 | POST | `/api/mocks/seed/users?qty=10` | Inserta `qty` usuarios |
 | POST | `/api/mocks/seed?qty=10` | Inserta el conjunto completo: clientes, repartidores, pedidos y entregas |
+| POST | `/api/mocks/seed/deliveries?orderId=<id>` | Crea una entrega simulada para un pedido existente |
 
 Respuestas de ejemplo:
 
@@ -215,7 +223,24 @@ curl -i "localhost:8080/api/mocks/orders?qty=3&status=FOO"      # 400 INVALID_ST
 curl -i localhost:8080/api/users/000000000000000000000000       # 404 USER_NOT_FOUND
 curl -i localhost:8080/api/users/abc                            # 400 INVALID_ID
 curl -i localhost:8080/api/nada                                 # 404 ROUTE_NOT_FOUND
+curl -i -X POST "localhost:8080/api/mocks/seed/deliveries?orderId=<ID_PEDIDO_SIN_ENTREGA>"
+curl -i -X POST "localhost:8080/api/mocks/seed/deliveries?orderId=000000000000000000000000"   # 404 ORDER_NOT_FOUND
+curl -i -X POST "localhost:8080/api/mocks/seed/deliveries?orderId=abc"                         # 400 INVALID_ID
+curl -i -X POST "localhost:8080/api/mocks/seed/deliveries"                                     # 400 INVALID_ID
 ```
+
+Los pedidos que crea `seed` ya vienen con su entrega. Para probar el caso de éxito
+(201) hay que liberar uno en `mongosh` y usar su `_id` en `<ID_PEDIDO_SIN_ENTREGA>`:
+
+```javascript
+const o = db.orders.findOne({ status: { $ne: "CANCELLED" }, delivery: { $ne: null } })
+db.deliveries.deleteOne({ _id: o.delivery })
+db.orders.updateOne({ _id: o._id }, { $set: { delivery: null } })
+o._id
+```
+
+Repetir el mismo `curl` devuelve 409 `DELIVERY_ALREADY_EXISTS`. Con el `_id` de un
+pedido `CANCELLED` devuelve 400 `INVALID_STATUS`.
 
 Cada ejecución de `seed` agrega datos nuevos (no borra los anteriores).
 

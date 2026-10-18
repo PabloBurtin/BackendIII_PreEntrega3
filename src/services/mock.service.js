@@ -2,9 +2,9 @@ import { generateMockUsers } from "../mocks/user.mocks.js";
 import { generateMockOrders } from "../mocks/order.mocks.js";
 import { generateMockDelivery } from "../mocks/delivery.mocks.js";
 import { MockRepository } from "../repositories/mock.repository.js";
-import { USER_ROLES, MOCKING_PARAMETERS, ORDER_STATUS, COLLECTIONS } from "../constants/index.js";
+import { USER_ROLES, MOCKING_PARAMETERS, ORDER_STATUS, COLLECTIONS, DELIVERY_STATUS_BY_ORDER_STATUS } from "../constants/index.js";
 import { hashPassword } from "../utils/password.util.js";
-import { InvalidQuantityError, InvalidStatusError, MockSeedError } from "../errors/domain.error.js";
+import { InvalidQuantityError, InvalidStatusError, MockSeedError, InvalidIdError, OrderNotFoundError, DeliveryAlreadyExistsError, NoCouriersAvailableError } from "../errors/domain.error.js";
 
 const parseQty = (qty) => {
     if (qty === undefined) return MOCKING_PARAMETERS.DEFAULT_QTY;
@@ -131,5 +131,42 @@ export class MockService {
                 entregas: inserted[COLLECTIONS.DELIVERIES]
             }
         };
+    }
+
+    static async seedDelivery(orderId) {
+        if (typeof orderId !== "string" || orderId.trim() === "") {
+            throw new InvalidIdError({ field: "orderId", reason: "El parámetro orderId es obligatorio" });
+        }
+
+        const order = await MockRepository.findOrderById(orderId);
+        if (!order) throw new OrderNotFoundError({ id: orderId });
+
+        if (order.delivery) {
+            throw new DeliveryAlreadyExistsError({ orderId, deliveryId: order.delivery });
+        }
+
+        if (!DELIVERY_STATUS_BY_ORDER_STATUS[order.status]) {
+            throw new InvalidStatusError({
+                orderStatus: order.status,
+                reason: "El estado del pedido no admite una entrega"
+            });
+        }
+
+        const courierIds = await MockRepository.findCourierIds();
+        if (courierIds.length === 0) {
+            throw new NoCouriersAvailableError({ hint: "Ejecuta POST /api/mocks/seed para cargar repartidores" });
+        }
+
+        const delivery = generateMockDelivery(order, courierIds);
+
+        try {
+            await MockRepository.insertDeliveries([delivery]);
+            await MockRepository.linkDelivery(order._id, delivery._id);
+        } catch (error) {
+            await MockRepository.deleteDeliveries([delivery._id]).catch(() => {});
+            throw new MockSeedError({ collection: COLLECTIONS.DELIVERIES }, error);
+        }
+
+        return { insertados: 1, coleccion: COLLECTIONS.DELIVERIES, entrega: delivery };
     }
 }

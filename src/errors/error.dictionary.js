@@ -12,7 +12,9 @@ export const ERROR_CODES = Object.freeze({
     INVALID_JSON: "INVALID_JSON",
     MOCK_SEED_FAILED: "MOCK_SEED_FAILED",
     ROUTE_NOT_FOUND: "ROUTE_NOT_FOUND",
-    INTERNAL_ERROR: "INTERNAL_ERROR"
+    INTERNAL_ERROR: "INTERNAL_ERROR",
+    DELIVERY_ALREADY_EXISTS: "DELIVERY_ALREADY_EXISTS",
+    NO_COURIERS_AVAILABLE: "NO_COURIERS_AVAILABLE"
 });
 
 export const ERROR_DICTIONARY = Object.freeze({
@@ -26,8 +28,10 @@ export const ERROR_DICTIONARY = Object.freeze({
     [ERROR_CODES.INVALID_QUANTITY]: { statusCode: 400, message: "Cantidad inválida" },
     [ERROR_CODES.INVALID_ID]: { statusCode: 400, message: "El identificador no tiene un formato válido" },
     [ERROR_CODES.VALIDATION_ERROR]: { statusCode: 400, message: "Los datos enviados no son válidos" },
-    [ERROR_CODES.INVALID_JSON]: { statusCode:400, message: "El cuerpo de la petición no es un JSON válido" },
+    [ERROR_CODES.INVALID_JSON]: { statusCode: 400, message: "El cuerpo de la petición no es un JSON válido" },
     [ERROR_CODES.MOCK_SEED_FAILED]: { statusCode: 500, message: "No se pudieron guardar los datos de prueba" },
     [ERROR_CODES.ROUTE_NOT_FOUND]: { statusCode: 404, message: "Ruta no encontrada" },
-    [ERROR_CODES.INTERNAL_ERROR]: { statusCode: 500, message: "Error interno del servidor" }
+    [ERROR_CODES.INTERNAL_ERROR]: { statusCode: 500, message: "Error interno del servidor" },
+    [ERROR_CODES.DELIVERY_ALREADY_EXISTS]: { statusCode: 409, message: "El pedido ya tiene una entrega asociada" },
+    [ERROR_CODES.NO_COURIERS_AVAILABLE]: { statusCode: 409, message: "No hay repartidores disponibles para asignar la entrega" }
 });

@@ -24,4 +24,8 @@ export class MockController {
     static async seed(req, res) {
         res.status(201).json(await MockService.seed(req.query.qty));
     }
+
+    static async seedDelivery(req, res) {
+        res.status(201).json(await MockService.seedDelivery(req.query.orderId));
+    }
 }

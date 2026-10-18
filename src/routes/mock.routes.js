@@ -10,5 +10,6 @@ router.get("/deliveries", MockController.getDeliveries);
 
 router.post("/seed", MockController.seed);
 router.post("/seed/users", MockController.seedUsers);
+router.post("/seed/deliveries", MockController.seedDelivery);
 
 export default router;

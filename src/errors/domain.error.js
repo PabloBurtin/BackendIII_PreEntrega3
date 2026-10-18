@@ -33,7 +33,7 @@ export class EmailAlreadyExistsError extends AppError {
 
 export class InvalidPasswordError extends AppError {
     constructor(details) {
-        super(ERROR_CODES.INVALID_PASSWORD, details)
+        super(ERROR_CODES.INVALID_PASSWORD, details);
     }
 }
 
@@ -50,7 +50,25 @@ export class InvalidQuantityError extends AppError {
 }
 
 export class MockSeedError extends AppError {
-    constructor(details,cause) {
+    constructor(details, cause) {
         super(ERROR_CODES.MOCK_SEED_FAILED, details, cause);
+    }
+}
+
+export class InvalidIdError extends AppError {
+    constructor(details) {
+        super(ERROR_CODES.INVALID_ID, details);
+    }
+}
+
+export class DeliveryAlreadyExistsError extends AppError {
+    constructor(details) {
+        super(ERROR_CODES.DELIVERY_ALREADY_EXISTS, details);
+    }
+}
+
+export class NoCouriersAvailableError extends AppError {
+    constructor(details) {
+        super(ERROR_CODES.NO_COURIERS_AVAILABLE, details);
     }
 }
